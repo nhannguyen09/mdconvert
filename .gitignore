@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.env
+.env.local
+.env.production
+*.key
+*.pem
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+.claude/settings.local.json
+tsconfig.tsbuildinfo

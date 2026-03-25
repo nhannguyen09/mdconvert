@@ -1,0 +1,116 @@
+// prisma/schema.prisma
+// Schema: Conversion + ImageDescription + NextAuth tables
+// Task 1.2
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── NextAuth models ─────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // bcrypt hash — set during /setup wizard
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Core models ─────────────────────────────────────────────────────────────
+
+model Conversion {
+  id              String   @id @default(uuid())
+  fileName        String
+  fileType        String   // "docx" | "pdf"
+  fileSize        Int
+  compressLevel   String?  // "screen" | "ebook" | "printer" | "prepress" (PDF only)
+  compressedSize  Int?
+  originalPath    String
+  fullMdPath      String?  // DOCX only
+  textOnlyMdPath  String?
+  imagesDir       String?  // DOCX only
+  imageCount      Int      @default(0)
+  status          String   @default("pending") // pending|compressing|processing|completed|failed
+  progressText    String?  // "Đang mô tả hình 12/36..." — hiển thị real-time khi processing
+  errorMessage    String?
+  filesDeleted    Boolean  @default(false)     // true khi file đã bị auto cleanup sau 24h
+  createdBy       String   // Phase 3: FK → User.id. Phase 1-2: hardcode "system"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  // user relation: thêm lại ở Phase 3 khi auth được implement
+  imageDescriptions ImageDescription[]
+
+  @@index([createdBy], name: "idx_conversion_created_by")
+  @@index([status], name: "idx_conversion_status")
+  @@index([createdAt(sort: Desc)], name: "idx_conversion_created_at")
+}
+
+// ─── App Settings ─────────────────────────────────────────────────────────────
+// Lưu cấu hình AI provider, API key (encrypted), model, prompts
+// Keys: ai_provider, ai_api_key, ai_model, ai_image_prompt, ai_pdf_prompt
+
+model AppSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model ImageDescription {
+  id           String   @id @default(uuid())
+  conversionId String
+  imageName    String
+  imagePath    String
+  description  String   @db.Text
+  shortAlt     String
+  createdAt    DateTime @default(now())
+
+  conversion Conversion @relation(fields: [conversionId], references: [id], onDelete: Cascade)
+
+  @@index([conversionId], name: "idx_image_conversion_id")
+}

@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #111827;
+  --surface: #F8FAFC;
+  --border: #E5E7EB;
+  --primary: #1A428A;
+  --accent: #3CABD2;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Force light theme */
+@media (prefers-color-scheme: dark) {
+  body {
+    color: var(--foreground);
+    background: var(--background);
+  }
+}
