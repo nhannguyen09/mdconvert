@@ -6,7 +6,7 @@
 |---|---|
 | Engine | PostgreSQL |
 | ORM | Prisma |
-| DB name | chelien_sop |
+| DB name | mdconvert (configurable via DATABASE_URL) |
 
 ## Models
 
