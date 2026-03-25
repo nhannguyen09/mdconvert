@@ -40,6 +40,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SessionProviderWrapper>
           <HeaderNav />
           <PageWrapper>{children}</PageWrapper>
+          <footer className="text-center py-4 text-xs text-gray-300">
+            mdconvert v1.0 —{' '}
+            <a href="https://nhannguyensharing.com" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">
+              by NNS
+            </a>
+          </footer>
         </SessionProviderWrapper>
       </body>
     </html>

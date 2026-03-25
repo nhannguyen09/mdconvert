@@ -128,6 +128,11 @@ export default function SetupPage() {
         <p className="text-center text-xs text-gray-400 mt-4">
           This page is only visible on first launch.
         </p>
+        <p className="text-center text-xs text-gray-300 mt-2">
+          <a href="https://nhannguyensharing.com" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">
+            mdconvert by NhanNguyenSharing
+          </a>
+        </p>
       </div>
     </div>
   );
