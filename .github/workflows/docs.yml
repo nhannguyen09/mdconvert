@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: docs-site
-        run: npm ci
+        run: rm -f package-lock.json && npm install
 
       - name: Build VitePress
         working-directory: docs-site
