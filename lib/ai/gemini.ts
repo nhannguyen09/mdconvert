@@ -142,13 +142,16 @@ class GeminiProvider implements AIVisionProvider {
     let consecutiveFails = 0;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      // Progressive timeout: 60s → 120s → 180s — PDF trang dày cần thêm thời gian
+      const timeoutMs = TIMEOUT_MS * (attempt + 1);
+
       try {
         const result = await withTimeout(
           geminiModel.generateContent([
             { inlineData: { data: base64, mimeType: 'application/pdf' } },
             prompt,
           ]),
-          TIMEOUT_MS
+          timeoutMs
         );
 
         await sleep(DELAY_MS);
@@ -156,6 +159,7 @@ class GeminiProvider implements AIVisionProvider {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         const isRateLimit = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED');
+        const isTimeout = msg.includes('[Timeout]');
 
         if (isRateLimit) {
           consecutiveFails++;
@@ -168,8 +172,13 @@ class GeminiProvider implements AIVisionProvider {
           continue;
         }
 
+        if (isTimeout && attempt < MAX_RETRIES) {
+          console.warn(`[Gemini] convertPdf timeout sau ${timeoutMs / 1000}s — retry với ${TIMEOUT_MS * (attempt + 2) / 1000}s`);
+          continue;
+        }
+
         console.error(`[Gemini] convertPdf fail attempt ${attempt}:`, sanitizeError(err));
-        if (attempt >= 1) throw err;
+        if (attempt >= MAX_RETRIES) throw err;
       }
     }
 
