@@ -225,6 +225,15 @@ export async function describeImages(
 export async function convertPdfWithAI(
   pdfPath: string
 ): Promise<string> {
+  // X4: PDF conversion chỉ hỗ trợ Gemini — throw lỗi rõ ràng cho provider khác
+  const provider = await getSetting('ai_provider');
+  if (provider !== 'gemini') {
+    throw new Error(
+      `PDF conversion với "${provider}" chưa được hỗ trợ. ` +
+      'Vui lòng chuyển về Gemini trong /settings để convert PDF.'
+    );
+  }
+
   const prompt = await getSetting('ai_pdf_prompt');
   return aiProvider.convertPdf(pdfPath, prompt);
 }

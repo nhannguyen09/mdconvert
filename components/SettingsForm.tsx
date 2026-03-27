@@ -4,7 +4,7 @@
 // Form for AI provider settings: provider, api key, model, prompts
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, Save, Zap, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Save, Zap, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 
 // ─── Prompt presets (mirrors lib/settings.ts — kept client-side for instant fill) ──
 const PROMPT_PRESETS = {
@@ -47,6 +47,8 @@ interface Settings {
   ai_model: string;
   ai_image_prompt: string;
   ai_pdf_prompt: string;
+  pdf_pages_per_batch: string;
+  pdf_max_pages: string;
 }
 
 const PROVIDER_OPTIONS = [
@@ -86,6 +88,8 @@ export default function SettingsForm() {
     ai_model: 'gemini-2.0-flash-lite',
     ai_image_prompt: '',
     ai_pdf_prompt: '',
+    pdf_pages_per_batch: '20',
+    pdf_max_pages: '0',
   });
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,6 +180,16 @@ export default function SettingsForm() {
             ))}
           </select>
         </div>
+
+        {/* X4: Warning khi chọn provider không hỗ trợ PDF */}
+        {settings.ai_provider !== 'gemini' && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-700">
+              Provider này hiện chỉ hỗ trợ mô tả hình ảnh (DOCX). Convert PDF yêu cầu Gemini.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -277,6 +291,42 @@ export default function SettingsForm() {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3CABD2] focus:border-transparent resize-y"
           />
         </div>
+      </div>
+
+      {/* X1: PDF Settings */}
+      <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+        <h2 className="text-base font-semibold text-gray-900">PDF Settings</h2>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Số trang mỗi batch
+            </label>
+            <input
+              type="number"
+              min="5"
+              max="50"
+              value={settings.pdf_pages_per_batch}
+              onChange={e => setSettings(s => ({ ...s, pdf_pages_per_batch: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3CABD2] focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Giới hạn trang tối đa
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={settings.pdf_max_pages}
+              onChange={e => setSettings(s => ({ ...s, pdf_max_pages: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3CABD2] focus:border-transparent"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">
+          Đặt giới hạn = <strong>0</strong> để xử lý toàn bộ file PDF. File 200+ trang có thể mất 10–15 phút.
+        </p>
       </div>
 
       {/* Actions */}

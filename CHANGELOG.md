@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.0.1 — 2026-03-27
+
+Community feedback — 6 PDF flow improvements.
+
+### Bug Fixes
+
+- **X6** — Error message đồng bộ với `MAX_FILE_SIZE`: đổi "100MB" → "300MB" trong `lib/upload.ts`
+- **X2** — `countPdfPages()` dùng `pdfinfo` (poppler-utils) thay regex trên binary buffer; Ghostscript fallback nếu poppler chưa cài
+- **X1** — Bỏ hardcode `MAX_BATCHES = 5` (giới hạn cứng 100 trang); thêm 2 settings mới `pdf_pages_per_batch` (default 20) và `pdf_max_pages` (default 0 = không giới hạn); UI "PDF Settings" trong `/settings`
+- **X3** — Batch PDF xử lý song song 3 batch/lượt (`Promise.allSettled`) thay vì tuần tự; progress text cập nhật theo từng chunk
+- **X4** — Provider không phải Gemini khi convert PDF: throw lỗi rõ ràng thay vì lỗi runtime ngầm; warning banner trong Settings UI
+- **X5** — Cải thiện PDF prompt (cả EN và VI): thêm hướng dẫn heading hierarchy, bỏ header/footer lặp, đánh dấu số trang `<!-- Page X -->`
+
+---
+
 ## v1.0.0 — 2026-03-25
 
 Initial open source release.

@@ -1,14 +1,16 @@
 // lib/converters/pdf.ts
 // PDF converter: compress → Gemini → text-only.md
-// Batch 20 trang nếu dài, tối đa 5 batch (100 trang)
+// X2: countPdfPages dùng pdfinfo (poppler-utils) thay regex
+// X1: pages_per_batch + max_pages đọc từ DB settings (không hardcode)
+// X3: batch xử lý song song 3 batch / lần thay vì tuần tự
 
 import fs from 'fs/promises';
 import path from 'path';
 import { compressPdf } from '@/lib/compress/pdf';
 import { convertPdfWithAI } from '@/lib/ai/gemini';
+import { getSetting } from '@/lib/settings';
 
-const PAGES_PER_BATCH = 20;
-const MAX_BATCHES = 5; // tối đa 100 trang
+const CONCURRENT_BATCHES = 3;
 
 export interface PdfConvertResult {
   textOnlyMdPath: string;
@@ -16,15 +18,41 @@ export interface PdfConvertResult {
   slug: string;
 }
 
-// Đếm trang PDF bằng cách parse binary (đơn giản, không cần thư viện ngoài)
-function countPdfPages(buffer: Buffer): number {
-  const content = buffer.toString('latin1');
-  // Tìm /Type /Page (không phải /Pages)
-  const matches = content.match(/\/Type\s*\/Page[^s]/g);
-  return matches ? matches.length : 0;
+// ─── X2: Đếm trang dùng pdfinfo (poppler-utils) với Ghostscript fallback ──────
+
+async function countPdfPages(pdfPath: string): Promise<number> {
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+
+  // Thử pdfinfo trước (poppler-utils)
+  try {
+    const { stdout } = await execFileAsync('pdfinfo', [pdfPath]);
+    const match = stdout.match(/Pages:\s+(\d+)/);
+    if (match) return parseInt(match[1], 10);
+  } catch {
+    // pdfinfo chưa cài — thử Ghostscript
+  }
+
+  // Fallback: Ghostscript
+  try {
+    const { stdout } = await execFileAsync('gs', [
+      '-q', '-dNODISPLAY', '-dNOSAFER',
+      '-c', `(${pdfPath}) (r) file runpdfbegin pdfpagecount = quit`,
+    ]);
+    const n = parseInt(stdout.trim(), 10);
+    if (!isNaN(n)) return n;
+  } catch {
+    // Ghostscript cũng thất bại
+  }
+
+  // Không đếm được — trả về 0 để caller gửi toàn bộ file
+  console.warn('[PDF] Không thể đếm trang — sẽ gửi toàn bộ file. Cài poppler-utils: apt install poppler-utils');
+  return 0;
 }
 
-// Split PDF theo range trang dùng Ghostscript
+// ─── Split PDF theo range trang ────────────────────────────────────────────────
+
 async function splitPdfPages(
   pdfPath: string,
   outputPath: string,
@@ -47,52 +75,86 @@ async function splitPdfPages(
   ]);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Main converter ─────────────────────────────────────────────────────────────
+
 export async function convertPdf(
   pdfPath: string,
   outputDir: string,
   compressLevel: string,
-  slug: string
+  slug: string,
+  onProgress?: (text: string) => void
 ): Promise<PdfConvertResult> {
   // Bước 1: Compress PDF với Ghostscript
   const compressedPath = path.join(outputDir, 'compressed.pdf');
   const { compressedSize } = await compressPdf(pdfPath, compressedPath, compressLevel);
 
-  // Đếm trang
-  const pdfBuffer = await fs.readFile(compressedPath);
-  const pageCount = countPdfPages(pdfBuffer);
+  // X1: Đọc settings từ DB
+  const pagesPerBatch = Math.max(1, parseInt(await getSetting('pdf_pages_per_batch'), 10) || 20);
+  const maxPages      = Math.max(0, parseInt(await getSetting('pdf_max_pages'), 10) || 0);
+
+  // X2: Đếm trang đáng tin cậy
+  const pageCount = await countPdfPages(compressedPath);
 
   let markdown: string;
-  let truncated = false;
 
-  if (pageCount <= PAGES_PER_BATCH || pageCount === 0) {
+  if (pageCount <= pagesPerBatch || pageCount === 0) {
     // PDF ngắn hoặc không đếm được — gửi toàn bộ file
+    onProgress?.('Đang xử lý tài liệu...');
     markdown = await convertPdfWithAI(compressedPath);
   } else {
-    // PDF dài — batch 20 trang
-    const totalBatches = Math.min(Math.ceil(pageCount / PAGES_PER_BATCH), MAX_BATCHES);
-    const parts: string[] = [];
+    // X1: Giới hạn trang nếu maxPages > 0
+    const effectivePages = maxPages > 0 ? Math.min(pageCount, maxPages) : pageCount;
+    const totalBatches   = Math.ceil(effectivePages / pagesPerBatch);
+    const parts: string[] = new Array(totalBatches);
 
-    for (let batch = 0; batch < totalBatches; batch++) {
-      const firstPage = batch * PAGES_PER_BATCH + 1;
-      const lastPage = Math.min((batch + 1) * PAGES_PER_BATCH, pageCount);
-      const batchPath = path.join(outputDir, `batch-${batch + 1}.pdf`);
+    // X3: Xử lý song song CONCURRENT_BATCHES batch mỗi lượt
+    for (let i = 0; i < totalBatches; i += CONCURRENT_BATCHES) {
+      const chunkIndices = Array.from(
+        { length: Math.min(CONCURRENT_BATCHES, totalBatches - i) },
+        (_, k) => i + k
+      );
 
-      await splitPdfPages(compressedPath, batchPath, firstPage, lastPage);
-      const batchMd = await convertPdfWithAI(batchPath);
-      parts.push(batchMd);
+      const firstInChunk = chunkIndices[0] * pagesPerBatch + 1;
+      const lastInChunk  = Math.min(
+        (chunkIndices[chunkIndices.length - 1] + 1) * pagesPerBatch,
+        effectivePages
+      );
+      onProgress?.(`Đang xử lý trang ${firstInChunk}–${lastInChunk}/${effectivePages}...`);
 
-      // Xóa file batch tạm
-      await fs.unlink(batchPath).catch(() => {});
-    }
+      const chunkResults = await Promise.allSettled(
+        chunkIndices.map(async (batchIdx) => {
+          const firstPage = batchIdx * pagesPerBatch + 1;
+          const lastPage  = Math.min((batchIdx + 1) * pagesPerBatch, effectivePages);
+          const batchPath = path.join(outputDir, `batch-${batchIdx + 1}.pdf`);
 
-    // E05: vượt quá 100 trang
-    if (pageCount > MAX_BATCHES * PAGES_PER_BATCH) {
-      truncated = true;
+          await splitPdfPages(compressedPath, batchPath, firstPage, lastPage);
+          const batchMd = await convertPdfWithAI(batchPath);
+          await fs.unlink(batchPath).catch(() => {});
+          return batchMd;
+        })
+      );
+
+      for (let k = 0; k < chunkIndices.length; k++) {
+        const r = chunkResults[k];
+        parts[chunkIndices[k]] = r.status === 'fulfilled'
+          ? r.value
+          : `\n\n> **[Lỗi convert batch ${chunkIndices[k] + 1}]:** ${r.reason}\n\n`;
+      }
+
+      if (i + CONCURRENT_BATCHES < totalBatches) {
+        await sleep(500);
+      }
     }
 
     markdown = parts.join('\n\n---\n\n');
-    if (truncated) {
-      markdown += '\n\n> **[Lưu ý]:** Tài liệu quá dài, chỉ convert 100 trang đầu.';
+
+    // X1: Ghi note nếu bị giới hạn
+    if (maxPages > 0 && pageCount > maxPages) {
+      markdown += `\n\n> **[Lưu ý]:** Tài liệu có ${pageCount} trang, chỉ convert ${maxPages} trang đầu theo cấu hình. Điều chỉnh "Giới hạn trang tối đa" trong Settings để xử lý toàn bộ.`;
     }
   }
 

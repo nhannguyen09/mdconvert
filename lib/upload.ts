@@ -60,7 +60,7 @@ export function validateFile(file: File): ValidateResult {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1);
     return {
       valid: false,
-      error: `File quá lớn (${sizeMB}MB). Giới hạn tối đa là 100MB.`,
+      error: `File quá lớn (${sizeMB}MB). Giới hạn tối đa là 300MB.`,
     };
   }
 
