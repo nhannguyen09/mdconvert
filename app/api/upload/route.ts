@@ -1,9 +1,13 @@
 // app/api/upload/route.ts
 // POST /api/upload — nhận nhiều file (field: "files"), validate từng file riêng
 // Backward compat: field "file" (đơn) vẫn hoạt động
+// C3: lấy user ID từ NextAuth session thay vì hardcode 'system'
+// H2: rollback file nếu DB create fail (tránh zombie files)
 
 import { prisma } from '@/lib/prisma';
 import { validateFile, saveUploadedFile, parseCompressLevel } from '@/lib/upload';
+import { getSessionUserId } from '@/lib/auth-helpers';
+import fs from 'fs/promises';
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +17,9 @@ export async function POST(request: Request) {
     } catch {
       return Response.json({ error: 'Request phải là multipart/form-data.' }, { status: 400 });
     }
+
+    // C3: Lấy user ID từ session
+    const createdBy = await getSessionUserId();
 
     // Lấy files: hỗ trợ "files" (batch) và "file" (đơn, backward compat)
     const rawFiles: File[] = [];
@@ -48,8 +55,11 @@ export async function POST(request: Request) {
 
       const { fileType } = validation;
 
+      // H2: Lưu path để rollback nếu DB fail
+      let savedPath: string | null = null;
       try {
         const { conversionId, originalPath, normalizedName } = await saveUploadedFile(file);
+        savedPath = originalPath;
 
         const conversion = await prisma.conversion.create({
           data: {
@@ -60,7 +70,7 @@ export async function POST(request: Request) {
             compressLevel: fileType === 'pdf' ? compressLevel : null,
             originalPath,
             status: 'pending',
-            createdBy: 'system',
+            createdBy, // C3: user ID từ session
           },
         });
 
@@ -72,7 +82,11 @@ export async function POST(request: Request) {
           status: conversion.status,
         });
       } catch (err) {
-        console.error('[Upload] saveFile error:', err);
+        // H2: Rollback file nếu DB create fail
+        if (savedPath) {
+          await fs.unlink(savedPath).catch(() => {});
+        }
+        console.error('[Upload] error:', err);
         errors.push({ fileName: file.name, error: 'Lỗi server khi lưu file.' });
       }
     }

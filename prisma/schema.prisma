@@ -85,7 +85,7 @@ model Conversion {
   // user relation: thêm lại ở Phase 3 khi auth được implement
   imageDescriptions ImageDescription[]
 
-  @@index([createdBy], name: "idx_conversion_created_by")
+  @@index([createdBy, deletedAt], name: "idx_conversion_owner_active") // M1: composite — history query WHERE createdBy=X AND deletedAt IS NULL
   @@index([status], name: "idx_conversion_status")
   @@index([createdAt(sort: Desc)], name: "idx_conversion_created_at")
 }

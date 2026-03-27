@@ -1,13 +1,28 @@
 // app/api/convert/[id]/edit/route.ts
 // PUT /api/convert/[id]/edit — ghi đè nội dung markdown đã sửa
+// C2: ownership check
+// L4: Content-Type validation
 
 import { prisma } from '@/lib/prisma';
+import { getSessionUserId } from '@/lib/auth-helpers';
 import fs from 'fs/promises';
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
-    const conversion = await prisma.conversion.findUnique({
-      where: { id: params.id, deletedAt: null },
+    // L4: Validate Content-Type
+    const contentType = request.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      return Response.json(
+        { error: 'Content-Type phải là application/json' },
+        { status: 415 }
+      );
+    }
+
+    // C2: Ownership check
+    const userId = await getSessionUserId();
+
+    const conversion = await prisma.conversion.findFirst({
+      where: { id: params.id, createdBy: userId, deletedAt: null },
     });
 
     if (!conversion) {

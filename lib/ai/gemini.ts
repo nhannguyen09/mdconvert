@@ -26,6 +26,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// M6: Sanitize error messages trước khi log — xóa API key nếu xuất hiện trong error
+function sanitizeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg
+    .replace(/key=[A-Za-z0-9_-]+/gi, 'key=***')
+    .replace(/AIza[A-Za-z0-9_-]{35,}/g, 'AIza***')
+    .replace(/Bearer\s+[A-Za-z0-9_.-]+/gi, 'Bearer ***');
+}
+
 async function getApiKey(): Promise<string> {
   // DB trước → .env fallback
   const dbKey = await getSetting('ai_api_key');
@@ -111,7 +120,7 @@ class GeminiProvider implements AIVisionProvider {
         }
 
         // Lỗi khác hoặc đã retry đủ lần
-        console.error(`[Gemini] describeImage fail attempt ${attempt}:`, msg);
+        console.error(`[Gemini] describeImage fail attempt ${attempt}:`, sanitizeError(err));
         if (attempt >= 1) break;
       }
     }
@@ -159,7 +168,7 @@ class GeminiProvider implements AIVisionProvider {
           continue;
         }
 
-        console.error(`[Gemini] convertPdf fail attempt ${attempt}:`, msg);
+        console.error(`[Gemini] convertPdf fail attempt ${attempt}:`, sanitizeError(err));
         if (attempt >= 1) throw err;
       }
     }

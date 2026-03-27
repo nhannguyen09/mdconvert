@@ -18,37 +18,30 @@ export interface PdfConvertResult {
   slug: string;
 }
 
-// ─── X2: Đếm trang dùng pdfinfo (poppler-utils) với Ghostscript fallback ──────
+// ─── C1: Đếm trang dùng pdfinfo (poppler-utils) — KHÔNG dùng Ghostscript fallback
+// Ghostscript fallback nguy hiểm: filename với ký tự ( ) sẽ inject PostScript code.
+// Yêu cầu: apt install poppler-utils trên server.
 
 async function countPdfPages(pdfPath: string): Promise<number> {
   const { execFile } = await import('child_process');
   const { promisify } = await import('util');
   const execFileAsync = promisify(execFile);
 
-  // Thử pdfinfo trước (poppler-utils)
   try {
     const { stdout } = await execFileAsync('pdfinfo', [pdfPath]);
     const match = stdout.match(/Pages:\s+(\d+)/);
     if (match) return parseInt(match[1], 10);
-  } catch {
-    // pdfinfo chưa cài — thử Ghostscript
+    throw new Error('Không parse được số trang từ pdfinfo output');
+  } catch (err: unknown) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === 'ENOENT') {
+      throw new Error(
+        'pdfinfo chưa cài. Chạy: apt install poppler-utils\n' +
+        'Sau đó restart server.'
+      );
+    }
+    throw err;
   }
-
-  // Fallback: Ghostscript
-  try {
-    const { stdout } = await execFileAsync('gs', [
-      '-q', '-dNODISPLAY', '-dNOSAFER',
-      '-c', `(${pdfPath}) (r) file runpdfbegin pdfpagecount = quit`,
-    ]);
-    const n = parseInt(stdout.trim(), 10);
-    if (!isNaN(n)) return n;
-  } catch {
-    // Ghostscript cũng thất bại
-  }
-
-  // Không đếm được — trả về 0 để caller gửi toàn bộ file
-  console.warn('[PDF] Không thể đếm trang — sẽ gửi toàn bộ file. Cài poppler-utils: apt install poppler-utils');
-  return 0;
 }
 
 // ─── Split PDF theo range trang ────────────────────────────────────────────────

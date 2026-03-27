@@ -208,17 +208,25 @@ export async function POST(request: Request) {
     const started: string[] = [];
     const skipped: { id: string; reason: string }[] = [];
 
+    // H4: Atomic check-and-set dùng updateMany với WHERE status='pending'
+    // Tránh race condition khi 2 request cùng trigger 1 conversion
     for (const id of ids) {
       const conv = found.get(id);
       if (!conv) {
         skipped.push({ id, reason: 'Không tồn tại' });
         continue;
       }
-      if (conv.status !== 'pending') {
-        skipped.push({ id, reason: `Đang ở trạng thái "${conv.status}"` });
+
+      const updated = await prisma.conversion.updateMany({
+        where: { id, status: 'pending' },
+        data: { status: 'compressing' },
+      });
+
+      if (updated.count === 0) {
+        skipped.push({ id, reason: `Đang ở trạng thái "${conv.status}" — đã được xử lý` });
         continue;
       }
-      await updateStatus(id, 'compressing');
+
       started.push(id);
     }
 

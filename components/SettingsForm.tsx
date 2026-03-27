@@ -5,41 +5,8 @@
 
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Save, Zap, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
-
-// ─── Prompt presets (mirrors lib/settings.ts — kept client-side for instant fill) ──
-const PROMPT_PRESETS = {
-  en: {
-    image: `You are describing an image from an internal SOP (Standard Operating Procedure) document. Purpose: to help AI agents guide employees through procedures without seeing the original image.
-
-Describe in detail using this structure:
-
-1. IMAGE TYPE: Screenshot of software, process diagram, real photo, or table/chart.
-
-2. MAIN CONTENT:
-   - If software screenshot: app name, current screen, data fields, sample values, highlighted buttons or arrows.
-   - If process diagram: list each step in order with arrow directions.
-   - If real photo: describe objects, positions, conditions.
-   - If table/chart: list column headers and sample rows.
-
-3. TEXT IN IMAGE: Transcribe ALL visible text exactly as shown, especially labels, titles, values, button names.
-
-4. ACTION REQUIRED: If the image illustrates a specific action, describe exactly what to click/type/select and where.
-
-Do not add personal opinions. Do not guess information not visible in the image.`,
-    pdf: `Convert this document to Markdown. Preserve heading structure, tables, and lists.
-
-For each image in the document, replace with a detailed description block:
-> **[Image]:** [detailed description]
-
-Include: image type, software name if screenshot, all visible text, and required actions if applicable.
-
-Output clean Markdown with proper heading hierarchy (h1, h2, h3).`,
-  },
-  vi: {
-    image: `Bạn là trợ lý mô tả hình ảnh cho tài liệu SOP (quy trình nội bộ). Mô tả chi tiết hình ảnh này bằng tiếng Việt theo cấu trúc sau:\n\n1. Một câu tóm tắt ngắn về nội dung tổng thể của hình.\n2. Mô tả chi tiết các thành phần chính: tên màn hình/giao diện, các nút bấm, menu, bảng dữ liệu, trường nhập liệu.\n3. Ghi rõ tất cả text/số liệu hiển thị trong hình (tên cột, giá trị, nhãn nút).\n4. Mô tả trạng thái hiện tại và thao tác mà người dùng đang thực hiện hoặc cần thực hiện.\n\nNếu hình trắng hoặc không có nội dung rõ ràng, chỉ ghi: "[Hình không có nội dung]".`,
-    pdf: `Convert tài liệu này sang Markdown tiếng Việt. Giữ nguyên cấu trúc heading, bảng, danh sách. Mô tả chi tiết mọi hình ảnh trong tài liệu, bao gồm text trong hình nếu có.`,
-  },
-} as const;
+// M3: Single source of truth — import từ lib/prompt-presets.ts
+import { PROMPT_PRESETS } from '@/lib/prompt-presets';
 
 interface Settings {
   ai_provider: string;
@@ -51,10 +18,11 @@ interface Settings {
   pdf_max_pages: string;
 }
 
+// L5: pdfSupport flag — hiển thị note khi provider không hỗ trợ PDF
 const PROVIDER_OPTIONS = [
-  { value: 'gemini', label: 'Google Gemini' },
-  { value: 'openai', label: 'OpenAI (sắp hỗ trợ)' },
-  { value: 'anthropic', label: 'Anthropic Claude (sắp hỗ trợ)' },
+  { value: 'gemini',    label: 'Google Gemini',           pdfSupport: true  },
+  { value: 'openai',    label: 'OpenAI (sắp hỗ trợ)',     pdfSupport: false },
+  { value: 'anthropic', label: 'Anthropic Claude (sắp hỗ trợ)', pdfSupport: false },
 ];
 
 const MODEL_SUGGESTIONS: Record<string, { id: string; label: string }[]> = {
@@ -176,7 +144,9 @@ export default function SettingsForm() {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3CABD2] focus:border-transparent"
           >
             {PROVIDER_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>
+                {opt.label}{!opt.pdfSupport ? ' — DOCX ✅ | PDF ❌' : ''}
+              </option>
             ))}
           </select>
         </div>

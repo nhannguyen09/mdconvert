@@ -3,7 +3,8 @@
 // app/convert/[id]/page.tsx
 // Trang kết quả: polling status → preview/edit/download
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import React from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Download, Pencil, Eye, ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
@@ -47,9 +48,15 @@ export default function ConvertResultPage() {
   const [activeTab, setActiveTab] = useState<'full' | 'text-only'>('full');
   const [editMode, setEditMode] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  // M2: Exponential backoff polling — tăng interval sau mỗi 10 lần, tối đa 10s
+  const [pollInterval, setPollInterval] = useState(2000);
+  const pollCountRef = useRef(0);
+  const prevStatusRef = useRef<string | null>(null);
+
+  const fetchData = useCallback(async (lite = false) => {
     try {
-      const res = await fetch(`/api/convert/${id}`);
+      const url = lite ? `/api/convert/${id}?lite=true` : `/api/convert/${id}`;
+      const res = await fetch(url);
       if (!res.ok) { setError('Không tìm thấy conversion'); return; }
       const json: ConversionData = await res.json();
       setData(json);
@@ -58,26 +65,34 @@ export default function ConvertResultPage() {
     }
   }, [id]);
 
-  // Polling
+  // Fetch đầy đủ lần đầu
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(() => {
-      setData(prev => {
-        if (prev && (prev.status === 'completed' || prev.status === 'failed')) {
-          clearInterval(interval);
-          return prev;
-        }
-        return prev;
-      });
-      fetchData();
-    }, 2000);
-    return () => clearInterval(interval);
+    fetchData(false);
   }, [fetchData]);
 
-  // Stop polling when done
+  // Polling với backoff — dừng khi completed/failed
   useEffect(() => {
     if (data?.status === 'completed' || data?.status === 'failed') return;
-  }, [data]);
+
+    const timer = setTimeout(async () => {
+      pollCountRef.current += 1;
+      // Tăng interval sau mỗi 10 lần poll
+      if (pollCountRef.current % 10 === 0) {
+        setPollInterval(prev => Math.min(Math.floor(prev * 1.5), 10_000));
+      }
+      await fetchData(true); // lite mode khi polling
+    }, pollInterval);
+
+    return () => clearTimeout(timer);
+  }, [data, fetchData, pollInterval]);
+
+  // Khi status → completed: fetch lại đầy đủ để lấy markdown content
+  useEffect(() => {
+    if (data?.status === 'completed' && prevStatusRef.current !== 'completed') {
+      fetchData(false);
+    }
+    prevStatusRef.current = data?.status ?? null;
+  }, [data?.status, fetchData]);
 
   if (error) {
     return (

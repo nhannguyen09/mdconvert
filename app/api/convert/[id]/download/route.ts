@@ -1,15 +1,20 @@
 // app/api/convert/[id]/download/route.ts
 // GET /api/convert/[id]/download — stream ZIP file
+// C2: ownership check
 
 import { prisma } from '@/lib/prisma';
+import { getSessionUserId } from '@/lib/auth-helpers';
 import { createZipStream } from '@/lib/zip';
 import { slugify } from '@/lib/converters/docx';
 import { Readable } from 'stream';
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
-    const conversion = await prisma.conversion.findUnique({
-      where: { id: params.id, deletedAt: null },
+    // C2: Ownership check
+    const userId = await getSessionUserId();
+
+    const conversion = await prisma.conversion.findFirst({
+      where: { id: params.id, createdBy: userId, deletedAt: null },
     });
 
     if (!conversion) {

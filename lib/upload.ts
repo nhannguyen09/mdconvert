@@ -1,8 +1,12 @@
 // lib/upload.ts
 // Business logic cho upload: validate, normalize filename, lưu file, tạo output dir
-// Dùng bởi app/api/upload/route.ts
+// H1: path.basename() để chặn path traversal (../../etc/passwd)
+// H3: stream write thay vì arrayBuffer() để tránh OOM với file lớn
 
 import fs from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import path from 'path';
 import crypto from 'crypto';
 
@@ -71,9 +75,10 @@ export function validateFile(file: File): ValidateResult {
 
 // ─── Filename normalization ───────────────────────────────────────────────────
 
-// E07: Normalize NFD → NFC cho tên file tiếng Việt
+// H1 + E07: basename() chặn path traversal, NFC normalize cho tiếng Việt
 export function normalizeFilename(name: string): string {
-  return name.normalize('NFC');
+  // path.basename() loại bỏ mọi directory component (../../, /etc/ ...)
+  return path.basename(name.normalize('NFC'));
 }
 
 // ─── File saving ──────────────────────────────────────────────────────────────
@@ -91,10 +96,10 @@ export async function saveUploadedFile(file: File): Promise<SaveResult> {
 
   const conversionId = crypto.randomUUID();
 
-  // E07: normalize tên file tiếng Việt NFD → NFC
+  // H1: normalize + basename để chặn path traversal
   const normalizedName = normalizeFilename(file.name);
 
-  // Lưu file gốc: uploads/[uuid]-[originalname]
+  // Lưu file gốc: uploads/[uuid]-[safename]
   const originalPath = path.join(uploadDir, `${conversionId}-${normalizedName}`);
 
   // Tạo thư mục outputs/[uuid]/ cho conversion này
@@ -104,9 +109,17 @@ export async function saveUploadedFile(file: File): Promise<SaveResult> {
   await fs.mkdir(path.dirname(originalPath), { recursive: true });
   await fs.mkdir(conversionOutputDir, { recursive: true });
 
-  // Ghi file từ ArrayBuffer
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(originalPath, buffer);
+  // H3: Stream write thay vì arrayBuffer() để tránh OOM với file lớn (300MB)
+  // file.stream() → Web ReadableStream → Node.js Readable → fs WriteStream
+  try {
+    const readable = Readable.fromWeb(file.stream() as Parameters<typeof Readable.fromWeb>[0]);
+    const writable = createWriteStream(originalPath);
+    await pipeline(readable, writable);
+  } catch {
+    // Fallback: nếu stream không hoạt động (môi trường đặc biệt) → dùng arrayBuffer
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await fs.writeFile(originalPath, buffer);
+  }
 
   return {
     conversionId,
