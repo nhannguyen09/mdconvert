@@ -48,6 +48,7 @@ export async function compressPdf(
   const originalSize = originalStat.size;
 
   await execFileAsync('gs', [
+    '-dSAFER',
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     `-dPDFSETTINGS=/${preset}`,

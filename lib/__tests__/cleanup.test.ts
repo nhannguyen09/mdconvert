@@ -30,6 +30,7 @@ describe('cleanupExpiredFiles', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.OUTPUT_DIR = '/tmp/outputs';
+    process.env.UPLOAD_DIR = '/tmp/uploads';
   });
 
   it('deletes files for expired conversions and marks filesDeleted', async () => {

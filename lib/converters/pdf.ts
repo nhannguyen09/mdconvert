@@ -57,6 +57,7 @@ async function splitPdfPages(
   const execFileAsync = promisify(execFile);
 
   await execFileAsync('gs', [
+    '-dSAFER',
     '-sDEVICE=pdfwrite',
     '-dNOPAUSE',
     '-dBATCH',

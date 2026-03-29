@@ -27,10 +27,18 @@ async function getDirSize(dirPath: string): Promise<number> {
   return size;
 }
 
+// ─── isSafePath: kiểm tra path nằm trong thư mục cho phép ────────────────────
+function isSafePath(filePath: string, allowedDir: string): boolean {
+  const resolved = path.resolve(filePath);
+  const allowedResolved = path.resolve(allowedDir);
+  return resolved.startsWith(allowedResolved + path.sep) || resolved === allowedResolved;
+}
+
 // ─── cleanupExpiredFiles ──────────────────────────────────────────────────────
 export async function cleanupExpiredFiles(): Promise<{ deleted: number; freedMB: number }> {
   const cutoff = new Date(Date.now() - EXPIRY_MS);
   const outputDir = process.env.OUTPUT_DIR ?? './outputs';
+  const uploadDir = process.env.UPLOAD_DIR ?? './uploads';
 
   const expired = await prisma.conversion.findMany({
     where: {
@@ -54,13 +62,17 @@ export async function cleanupExpiredFiles(): Promise<{ deleted: number; freedMB:
       freed += await getDirSize(convOutputDir);
       await fs.rm(convOutputDir, { recursive: true, force: true });
 
-      // Xóa file upload gốc
+      // Xóa file upload gốc — chỉ xóa nếu path nằm trong uploadDir (H4)
       if (conv.originalPath) {
-        try {
-          const stat = await fs.stat(conv.originalPath);
-          freed += stat.size;
-        } catch { /* file đã bị xóa trước */ }
-        await fs.rm(conv.originalPath, { force: true });
+        if (!isSafePath(conv.originalPath, uploadDir)) {
+          console.warn(`[Cleanup] Bỏ qua path không hợp lệ: ${conv.originalPath}`);
+        } else {
+          try {
+            const stat = await fs.stat(conv.originalPath);
+            freed += stat.size;
+          } catch { /* file đã bị xóa trước */ }
+          await fs.rm(conv.originalPath, { force: true });
+        }
       }
 
       // Đánh dấu filesDeleted trong DB (giữ record)

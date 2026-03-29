@@ -1,6 +1,6 @@
 // lib/crypto.ts
 // AES-256-GCM encrypt/decrypt cho ai_api_key
-// Key lấy từ NEXTAUTH_SECRET (đã có trong .env)
+// Key ưu tiên ENCRYPTION_KEY (32 chars), fallback NEXTAUTH_SECRET để tương thích cài đặt cũ
 
 import crypto from 'crypto';
 
@@ -9,9 +9,14 @@ const IV_LENGTH = 12;    // GCM standard
 const TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
+  // Ưu tiên ENCRYPTION_KEY riêng biệt — tách khỏi JWT secret (S04)
+  const encKey = process.env.ENCRYPTION_KEY;
+  if (encKey) {
+    return crypto.createHash('sha256').update(encKey).digest();
+  }
+  // Fallback: dùng NEXTAUTH_SECRET để tương thích với installs cũ chưa set ENCRYPTION_KEY
   const secret = process.env.NEXTAUTH_SECRET;
-  if (!secret) throw new Error('NEXTAUTH_SECRET chưa được cấu hình');
-  // Derive 32-byte key từ secret bằng SHA-256
+  if (!secret) throw new Error('ENCRYPTION_KEY hoặc NEXTAUTH_SECRET chưa được cấu hình');
   return crypto.createHash('sha256').update(secret).digest();
 }
 

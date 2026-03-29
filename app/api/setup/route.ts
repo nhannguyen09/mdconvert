@@ -12,11 +12,6 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const count = await prisma.user.count();
-  if (count > 0) {
-    return NextResponse.json({ error: 'Setup already complete' }, { status: 403 });
-  }
-
   const body = await req.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
@@ -39,13 +34,26 @@ export async function POST(req: NextRequest) {
   }
 
   const hash = await bcrypt.hash(password, 12);
-  await prisma.user.create({
-    data: {
-      email: email.toLowerCase(),
-      name: email.split('@')[0],
-      password: hash,
-    },
-  });
+
+  try {
+    // H2: Dùng transaction để count + create atomic — chặn TOCTOU race
+    await prisma.$transaction(async (tx) => {
+      const count = await tx.user.count();
+      if (count > 0) throw new Error('ALREADY_SETUP');
+      await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          name: email.split('@')[0],
+          password: hash,
+        },
+      });
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'ALREADY_SETUP') {
+      return NextResponse.json({ error: 'Setup already complete' }, { status: 403 });
+    }
+    throw err;
+  }
 
   return NextResponse.json({ success: true }, { status: 201 });
 }
