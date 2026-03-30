@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.7 — 2026-03-30
+
+### Bug Fix
+
+- **PDF convert fail với file corrupt/zlib error** — Một số PDF có compressed streams lỗi (zlib corrupt) khiến Ghostscript segfault và toàn bộ convert bị fail. Fix: nếu `compressPdf` crash → fallback dùng PDF gốc thay vì throw lỗi. File vẫn được convert bình thường, chỉ không được nén trước.
+
+---
+
 ## v1.0.6 — 2026-03-30
 
 ### Bug Fix
