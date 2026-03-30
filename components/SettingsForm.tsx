@@ -80,10 +80,17 @@ export default function SettingsForm() {
     setSaving(true);
     setSaveResult(null);
     try {
+      // Không gửi ai_api_key nếu vẫn là masked format (AIza...xxxx)
+      // để tránh ghi đè key thật trong DB bằng masked string
+      const payload: Record<string, string> = { ...settings };
+      if (payload.ai_api_key && payload.ai_api_key.includes('...')) {
+        delete payload.ai_api_key;
+      }
+
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         setSaveResult({ ok: true, msg: 'Lưu settings thành công!' });
@@ -101,12 +108,16 @@ export default function SettingsForm() {
   async function handleTest() {
     setTesting(true);
     setTestResult(null);
-    // Lưu trước rồi mới test
+    // Lưu trước rồi mới test — bỏ masked key như handleSave
     try {
+      const payload: Record<string, string> = { ...settings };
+      if (payload.ai_api_key && payload.ai_api_key.includes('...')) {
+        delete payload.ai_api_key;
+      }
       await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       });
       const res = await fetch('/api/settings/test', { method: 'POST' });
       const data = await res.json();
